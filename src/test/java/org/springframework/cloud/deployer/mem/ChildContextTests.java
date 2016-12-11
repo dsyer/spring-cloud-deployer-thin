@@ -16,6 +16,8 @@
 
 package org.springframework.cloud.deployer.mem;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -23,15 +25,11 @@ import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-
-import org.springframework.cloud.deployer.mem.InMemoryAppDeployer;
 import org.springframework.cloud.deployer.spi.app.DeploymentState;
 import org.springframework.cloud.deployer.spi.core.AppDefinition;
 import org.springframework.cloud.deployer.spi.core.AppDeploymentRequest;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * @author Dave Syer
@@ -40,11 +38,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 @RunWith(Parameterized.class)
 public class ChildContextTests {
 
-	private static InMemoryAppDeployer deployer = new InMemoryAppDeployer();
+	private static ThinJarAppDeployer deployer = new ThinJarAppDeployer("lib");
 
 	@Parameterized.Parameters
 	public static List<Object[]> data() {
-		return Arrays.asList(new Object[10][0]);
+		// Repeat a couple of times to ensure it's consistent
+		return Arrays.asList(new Object[2][0]);
 	}
 
 	@Test
@@ -83,6 +82,17 @@ public class ChildContextTests {
 				Collections.emptyMap(), Arrays.asList(args));
 		String deployed = deployer.deploy(request);
 		return deployed;
+	}
+
+	public static void main(String[] args) {
+		// Use this main method for leak detection (heap and non-heap, including classes
+		// loaded should be variable but stable)
+		ChildContextTests deployer = new ChildContextTests();
+		while (true) {
+			String deployed = deployer.deploy("app-with-cloud-in-lib-properties.jar",
+					"--server.port=0");
+			ChildContextTests.deployer.undeploy(deployed);
+		}
 	}
 
 }

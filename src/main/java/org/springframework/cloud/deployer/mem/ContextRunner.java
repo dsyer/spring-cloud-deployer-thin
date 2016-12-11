@@ -22,6 +22,13 @@ import org.springframework.boot.Banner.Mode;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
+/**
+ * Utility class for starting a Spring Boot application in a separate thread. Best used
+ * from an isolated class loader.
+ * 
+ * @author Dave Syer
+ *
+ */
 public class ContextRunner {
 
 	private ConfigurableApplicationContext context;

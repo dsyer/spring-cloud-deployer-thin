@@ -4,8 +4,8 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>org.springframework.cloud</groupId>
-	<artifactId>spring-cloud-deployer-memory</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<artifactId>spring-cloud-deployer-thin</artifactId>
+	<version>0.0.1.BUILD-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
 	<name>spring-cloud-deployer-memory</name>
@@ -24,7 +24,7 @@
 		<java.version>1.8</java.version>
 		<wrapper.version>0.0.1.BUILD-SNAPSHOT</wrapper.version>
 		<spring-boot.version>1.5.0.BUILD-SNAPSHOT</spring-boot.version>
-		<deployer.version>1.0.3.RELEASE</deployer.version>
+		<deployer.version>1.1.1.RELEASE</deployer.version>
 	</properties>
 
 	<dependencies>

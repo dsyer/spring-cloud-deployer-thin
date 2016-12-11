@@ -38,11 +38,10 @@ import java.util.jar.Manifest;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
 import org.springframework.boot.loader.archive.Archive;
 import org.springframework.boot.loader.archive.ExplodedArchive;
 import org.springframework.boot.loader.archive.JarFileArchive;
-import org.springframework.boot.loader.thin.ArchiveFactory;
+import org.springframework.boot.loader.thin.ArchiveUtils;
 import org.springframework.boot.loader.tools.MainClassFinder;
 import org.springframework.cloud.deployer.spi.app.AppDeployer;
 import org.springframework.cloud.deployer.spi.app.AppInstanceStatus;
@@ -55,18 +54,34 @@ import org.springframework.util.DigestUtils;
 import org.springframework.util.ReflectionUtils;
 
 /**
+ * An {@link AppDeployer} that launches apps in the same JVM, using a separate class
+ * loader.
+ * 
  * @author Dave Syer
  *
  */
-public class InMemoryAppDeployer implements AppDeployer {
+public class ThinJarAppDeployer implements AppDeployer {
 
 	private Map<String, Wrapper> apps = new LinkedHashMap<>();
 
+	private String name = "thin";
+
+	private String[] profiles = new String[0];
+
+	public ThinJarAppDeployer() {
+		this("thin");
+	}
+
+	public ThinJarAppDeployer(String name, String... profiles) {
+		this.name = name;
+		this.profiles = profiles;
+	}
+
 	@Override
 	public String deploy(AppDeploymentRequest request) {
-		Wrapper wrapper = new Wrapper(request.getResource());
+		Wrapper wrapper = new Wrapper(request.getResource(), getName(request),
+				getProfiles(request));
 		String id = wrapper.getId();
-		reset();
 		if (!apps.containsKey(id)) {
 			apps.put(id, wrapper);
 		}
@@ -75,6 +90,14 @@ public class InMemoryAppDeployer implements AppDeployer {
 		}
 		wrapper.run(request.getCommandlineArguments());
 		return id;
+	}
+
+	private String[] getProfiles(AppDeploymentRequest request) {
+		return this.profiles;
+	}
+
+	private String getName(AppDeploymentRequest request) {
+		return this.name;
 	}
 
 	@Override
@@ -87,22 +110,6 @@ public class InMemoryAppDeployer implements AppDeployer {
 		if (apps.containsKey(id)) {
 			apps.get(id).close();
 		}
-	}
-
-	private void reset() {
-		if (ClassUtils.isPresent(
-				"org.apache.catalina.webresources.TomcatURLStreamHandlerFactory", null)) {
-			setField(ClassUtils.resolveClassName(
-					"org.apache.catalina.webresources.TomcatURLStreamHandlerFactory",
-					null), "instance", null);
-			setField(URL.class, "factory", null);
-		}
-	}
-
-	private void setField(Class<?> type, String name, Object value) {
-		Field field = ReflectionUtils.findField(type, name);
-		ReflectionUtils.makeAccessible(field);
-		ReflectionUtils.setField(field, null, value);
 	}
 
 }
@@ -121,8 +128,14 @@ class Wrapper {
 
 	private DeploymentState state = DeploymentState.undeployed;
 
-	public Wrapper(Resource resource) {
+	private String name = "thin";
+
+	private String[] profiles = new String[0];
+
+	public Wrapper(Resource resource, String name, String[] profiles) {
 		this.resource = resource;
+		this.name = name;
+		this.profiles = profiles;
 		try {
 			this.id = DigestUtils.md5DigestAsHex(resource.getFile().getAbsolutePath()
 					.getBytes(Charset.forName("UTF-8")));
@@ -139,19 +152,10 @@ class Wrapper {
 			ClassLoader contextLoader = Thread.currentThread().getContextClassLoader();
 			try {
 				Archive child = new JarFileArchive(resource.getFile());
-				Archive parent = createArchive();
-				List<Archive> extracted = new ArchiveFactory().extract(child);
-				ClassLoader loader = createClassLoader(extracted, parent, child);
-				contextLoader = ClassUtils.overrideThreadContextClassLoader(loader);
-				Class<?> cls = loader.loadClass(ContextRunner.class.getName());
+				Class<?> cls = createContextRunnerClass(child);
 				this.app = cls.newInstance();
-				Method method = ReflectionUtils.findMethod(cls, "run", String.class,
-						String[].class);
-				ReflectionUtils.invokeMethod(method, this.app, getMainClass(child),
-						args.toArray(new String[0]));
-				Field field = ReflectionUtils.findField(cls, "running");
-				ReflectionUtils.makeAccessible(field);
-				boolean running = (Boolean) ReflectionUtils.getField(field, this.app);
+				runContext(getMainClass(child), args.toArray(new String[0]));
+				boolean running = isRunning();
 				this.state = running ? DeploymentState.deployed : DeploymentState.failed;
 			}
 			catch (Exception e) {
@@ -162,6 +166,44 @@ class Wrapper {
 				ClassUtils.overrideThreadContextClassLoader(contextLoader);
 			}
 		}
+	}
+
+	private boolean isRunning() {
+		Method method = ReflectionUtils.findMethod(this.app.getClass(), "isRunning");
+		return (Boolean) ReflectionUtils.invokeMethod(method, this.app);
+	}
+
+	private void runContext(String mainClass, String... args) {
+		Method method = ReflectionUtils.findMethod(this.app.getClass(), "run",
+				String.class, String[].class);
+		ReflectionUtils.invokeMethod(method, this.app, mainClass, args);
+	}
+
+	private Class<?> createContextRunnerClass(Archive child)
+			throws Exception, ClassNotFoundException {
+		Archive parent = createArchive();
+		List<Archive> extracted = new ArchiveUtils().extract(child, name, profiles);
+		ClassLoader loader = createClassLoader(extracted, parent, child);
+		ClassUtils.overrideThreadContextClassLoader(loader);
+		reset();
+		Class<?> cls = loader.loadClass(ContextRunner.class.getName());
+		return cls;
+	}
+
+	private void reset() {
+		if (ClassUtils.isPresent(
+				"org.apache.catalina.webresources.TomcatURLStreamHandlerFactory", null)) {
+			setField(ClassUtils.resolveClassName(
+					"org.apache.catalina.webresources.TomcatURLStreamHandlerFactory",
+					null), "instance", null);
+			setField(URL.class, "factory", null);
+		}
+	}
+
+	private void setField(Class<?> type, String name, Object value) {
+		Field field = ReflectionUtils.findField(type, name);
+		ReflectionUtils.makeAccessible(field);
+		ReflectionUtils.setField(field, null, value);
 	}
 
 	public void close() {
