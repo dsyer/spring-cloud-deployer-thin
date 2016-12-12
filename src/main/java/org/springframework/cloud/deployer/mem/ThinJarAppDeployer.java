@@ -57,8 +57,12 @@ import org.springframework.util.SocketUtils;
 import org.springframework.util.StringUtils;
 
 /**
- * An {@link AppDeployer} that launches apps in the same JVM, using a separate class
- * loader.
+ * An {@link AppDeployer} that launches thin jars as apps in the same JVM, using a
+ * separate class loader. Computes the class path from the jar being deployed in the same
+ * way as it would if you ran the jar in its own process. Makes an assumption that the
+ * "main" class in the archive is a Spring application context (e.g. typically a
+ * <code>@SpringBootApplication</code>) so that there is a way to close the context when
+ * the app is undeployed (a generic main method does not have that feature).
  * 
  * @author Dave Syer
  *
@@ -159,9 +163,9 @@ class Wrapper {
 
 	private DeploymentState state = DeploymentState.undeployed;
 
-	private String name = "thin";
+	private final String name;
 
-	private String[] profiles = new String[0];
+	private final String[] profiles;
 
 	public Wrapper(Resource resource, String name, String[] profiles) {
 		this.resource = resource;
