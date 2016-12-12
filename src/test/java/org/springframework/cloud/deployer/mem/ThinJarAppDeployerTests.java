@@ -36,9 +36,9 @@ import org.springframework.core.io.Resource;
  *
  */
 @RunWith(Parameterized.class)
-public class ChildContextTests {
+public class ThinJarAppDeployerTests {
 
-	private static ThinJarAppDeployer deployer = new ThinJarAppDeployer("lib");
+	private static ThinJarAppDeployer deployer = new ThinJarAppDeployer();
 
 	@Parameterized.Parameters
 	public static List<Object[]> data() {
@@ -48,7 +48,7 @@ public class ChildContextTests {
 
 	@Test
 	public void appFromJarFile() throws Exception {
-		String deployed = deploy("app-with-db-in-lib-properties.jar", "--server.port=0");
+		String deployed = deploy("app-with-db-in-lib-properties.jar");
 		// Deployment is blocking so it either failed or succeeded.
 		assertThat(deployer.status(deployed).getState())
 				.isEqualTo(DeploymentState.deployed);
@@ -57,8 +57,8 @@ public class ChildContextTests {
 
 	@Test
 	public void twoApps() throws Exception {
-		String first = deploy("app-with-db-in-lib-properties.jar", "--server.port=0");
-		String second = deploy("app-with-cloud-in-lib-properties.jar", "--server.port=0");
+		String first = deploy("app-with-db-in-lib-properties.jar");
+		String second = deploy("app-with-cloud-in-lib-properties.jar");
 		// Deployment is blocking so it either failed or succeeded.
 		assertThat(deployer.status(first).getState()).isEqualTo(DeploymentState.deployed);
 		assertThat(deployer.status(second).getState())
@@ -87,11 +87,11 @@ public class ChildContextTests {
 	public static void main(String[] args) {
 		// Use this main method for leak detection (heap and non-heap, including classes
 		// loaded should be variable but stable)
-		ChildContextTests deployer = new ChildContextTests();
+		ThinJarAppDeployerTests deployer = new ThinJarAppDeployerTests();
 		while (true) {
 			String deployed = deployer.deploy("app-with-cloud-in-lib-properties.jar",
 					"--server.port=0");
-			ChildContextTests.deployer.undeploy(deployed);
+			ThinJarAppDeployerTests.deployer.undeploy(deployed);
 		}
 	}
 

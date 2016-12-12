@@ -17,6 +17,7 @@
 package org.springframework.cloud.deployer.mem;
 
 import java.sql.SQLException;
+import java.util.Map;
 
 import org.springframework.boot.Banner.Mode;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -35,13 +36,13 @@ public class ContextRunner {
 	private Thread runThread;
 	private boolean running = false;
 
-	public void run(String source, String... args) {
+	public void run(String source, Map<String, Object> properties, String... args) {
 		// Run in new thread to ensure that the context classloader is setup
 		this.runThread = new Thread(new Runnable() {
 			@Override
 			public void run() {
 				context = new SpringApplicationBuilder(source).bannerMode(Mode.OFF)
-						.run(args);
+						.properties(properties).run(args);
 			}
 		});
 		this.runThread.start();

@@ -30,7 +30,7 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.cloud</groupId>
-			<artifactId>spring-cloud-deployer-spi</artifactId>
+			<artifactId>spring-cloud-deployer-local</artifactId>
 			<version>${deployer.version}</version>
 		</dependency>
 		<dependency>

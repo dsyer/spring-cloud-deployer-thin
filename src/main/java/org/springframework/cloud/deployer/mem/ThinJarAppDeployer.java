@@ -42,6 +42,7 @@ import org.springframework.boot.loader.archive.Archive;
 import org.springframework.boot.loader.archive.ExplodedArchive;
 import org.springframework.boot.loader.archive.JarFileArchive;
 import org.springframework.boot.loader.thin.ArchiveUtils;
+import org.springframework.boot.loader.thin.ThinJarLauncher;
 import org.springframework.boot.loader.tools.MainClassFinder;
 import org.springframework.cloud.deployer.spi.app.AppDeployer;
 import org.springframework.cloud.deployer.spi.app.AppInstanceStatus;
@@ -52,6 +53,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.DigestUtils;
 import org.springframework.util.ReflectionUtils;
+import org.springframework.util.SocketUtils;
+import org.springframework.util.StringUtils;
 
 /**
  * An {@link AppDeployer} that launches apps in the same JVM, using a separate class
@@ -61,6 +64,10 @@ import org.springframework.util.ReflectionUtils;
  *
  */
 public class ThinJarAppDeployer implements AppDeployer {
+
+	private static final String SERVER_PORT_KEY = "server.port";
+
+	private static final int DEFAULT_SERVER_PORT = 8080;
 
 	private Map<String, Wrapper> apps = new LinkedHashMap<>();
 
@@ -88,15 +95,39 @@ public class ThinJarAppDeployer implements AppDeployer {
 		else {
 			wrapper = apps.get(id);
 		}
-		wrapper.run(request.getCommandlineArguments());
+		wrapper.run(getProperties(request), request.getCommandlineArguments());
 		return id;
 	}
 
+	private Map<String, String> getProperties(AppDeploymentRequest request) {
+		Map<String, String> properties = new LinkedHashMap<>(
+				request.getDefinition().getProperties());
+		boolean useDynamicPort = !properties.containsKey(SERVER_PORT_KEY);
+		int port = useDynamicPort ? SocketUtils.findAvailableTcpPort(DEFAULT_SERVER_PORT)
+				: Integer.parseInt(
+						request.getDefinition().getProperties().get(SERVER_PORT_KEY));
+		if (useDynamicPort) {
+			properties.put(SERVER_PORT_KEY, String.valueOf(port));
+		}
+		return properties;
+	}
+
 	private String[] getProfiles(AppDeploymentRequest request) {
+		if (request.getDeploymentProperties()
+				.containsKey(PREFIX + ThinJarLauncher.THIN_PROFILE)) {
+			return StringUtils
+					.commaDelimitedListToStringArray(request.getDeploymentProperties()
+							.get(PREFIX + ThinJarLauncher.THIN_PROFILE));
+		}
 		return this.profiles;
 	}
 
 	private String getName(AppDeploymentRequest request) {
+		if (request.getDeploymentProperties()
+				.containsKey(PREFIX + ThinJarLauncher.THIN_NAME)) {
+			return request.getDeploymentProperties()
+					.get(PREFIX + ThinJarLauncher.THIN_NAME);
+		}
 		return this.name;
 	}
 
@@ -146,7 +177,7 @@ class Wrapper {
 		this.status = AppStatus.of(id).with(new InMemoryAppInstanceStatus(this)).build();
 	}
 
-	public void run(List<String> args) {
+	public void run(Map<String, String> properties, List<String> args) {
 		if (this.app == null) {
 			this.state = DeploymentState.deploying;
 			ClassLoader contextLoader = Thread.currentThread().getContextClassLoader();
@@ -154,7 +185,7 @@ class Wrapper {
 				Archive child = new JarFileArchive(resource.getFile());
 				Class<?> cls = createContextRunnerClass(child);
 				this.app = cls.newInstance();
-				runContext(getMainClass(child), args.toArray(new String[0]));
+				runContext(getMainClass(child), properties, args.toArray(new String[0]));
 				boolean running = isRunning();
 				this.state = running ? DeploymentState.deployed : DeploymentState.failed;
 			}
@@ -173,10 +204,11 @@ class Wrapper {
 		return (Boolean) ReflectionUtils.invokeMethod(method, this.app);
 	}
 
-	private void runContext(String mainClass, String... args) {
+	private void runContext(String mainClass, Map<String, String> properties,
+			String... args) {
 		Method method = ReflectionUtils.findMethod(this.app.getClass(), "run",
-				String.class, String[].class);
-		ReflectionUtils.invokeMethod(method, this.app, mainClass, args);
+				String.class, Map.class, String[].class);
+		ReflectionUtils.invokeMethod(method, this.app, mainClass, properties, args);
 	}
 
 	private Class<?> createContextRunnerClass(Archive child)
