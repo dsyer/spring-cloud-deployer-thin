@@ -30,7 +30,7 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.cloud</groupId>
-			<artifactId>spring-cloud-deployer-local</artifactId>
+			<artifactId>spring-cloud-deployer-spi</artifactId>
 			<version>${deployer.version}</version>
 		</dependency>
 		<dependency>
@@ -77,6 +77,12 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-deployer-local</artifactId>
+			<version>${deployer.version}</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>

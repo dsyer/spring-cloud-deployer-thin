@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.cloud.deployer.mem;
+package org.springframework.cloud.deployer.thin;
 
 import java.sql.Driver;
 import java.sql.DriverManager;

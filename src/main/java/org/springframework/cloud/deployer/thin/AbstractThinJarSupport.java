@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.cloud.deployer.mem;
+package org.springframework.cloud.deployer.thin;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,16 +28,15 @@ import java.nio.charset.Charset;
 import java.security.CodeSource;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+
 import org.springframework.boot.loader.archive.Archive;
 import org.springframework.boot.loader.archive.ExplodedArchive;
 import org.springframework.boot.loader.archive.JarFileArchive;
@@ -45,33 +44,21 @@ import org.springframework.boot.loader.thin.ArchiveUtils;
 import org.springframework.boot.loader.thin.ThinJarLauncher;
 import org.springframework.boot.loader.tools.MainClassFinder;
 import org.springframework.cloud.deployer.spi.app.AppDeployer;
-import org.springframework.cloud.deployer.spi.app.AppInstanceStatus;
-import org.springframework.cloud.deployer.spi.app.AppStatus;
-import org.springframework.cloud.deployer.spi.app.DeploymentState;
 import org.springframework.cloud.deployer.spi.core.AppDeploymentRequest;
+import org.springframework.cloud.deployer.spi.task.LaunchState;
 import org.springframework.core.io.Resource;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.DigestUtils;
 import org.springframework.util.ReflectionUtils;
-import org.springframework.util.SocketUtils;
 import org.springframework.util.StringUtils;
 
 /**
- * An {@link AppDeployer} that launches thin jars as apps in the same JVM, using a
- * separate class loader. Computes the class path from the jar being deployed in the same
- * way as it would if you ran the jar in its own process. Makes an assumption that the
- * "main" class in the archive is a Spring application context (e.g. typically a
- * <code>@SpringBootApplication</code>) so that there is a way to close the context when
- * the app is undeployed (a generic main method does not have that feature).
- * 
  * @author Dave Syer
  *
  */
-public class ThinJarAppDeployer implements AppDeployer {
+public class AbstractThinJarSupport {
 
-	private static final String SERVER_PORT_KEY = "server.port";
-
-	private static final int DEFAULT_SERVER_PORT = 8080;
+	private static final String JMX_DEFAULT_DOMAIN_KEY = "spring.jmx.default-domain";
 
 	private Map<String, Wrapper> apps = new LinkedHashMap<>();
 
@@ -79,16 +66,15 @@ public class ThinJarAppDeployer implements AppDeployer {
 
 	private String[] profiles = new String[0];
 
-	public ThinJarAppDeployer() {
+	public AbstractThinJarSupport() {
 		this("thin");
 	}
 
-	public ThinJarAppDeployer(String name, String... profiles) {
+	public AbstractThinJarSupport(String name, String... profiles) {
 		this.name = name;
 		this.profiles = profiles;
 	}
 
-	@Override
 	public String deploy(AppDeploymentRequest request) {
 		Wrapper wrapper = new Wrapper(request.getResource(), getName(request),
 				getProfiles(request));
@@ -103,48 +89,50 @@ public class ThinJarAppDeployer implements AppDeployer {
 		return id;
 	}
 
-	private Map<String, String> getProperties(AppDeploymentRequest request) {
+	protected Map<String, String> getProperties(AppDeploymentRequest request) {
 		Map<String, String> properties = new LinkedHashMap<>(
 				request.getDefinition().getProperties());
-		boolean useDynamicPort = !properties.containsKey(SERVER_PORT_KEY);
-		int port = useDynamicPort ? SocketUtils.findAvailableTcpPort(DEFAULT_SERVER_PORT)
-				: Integer.parseInt(
-						request.getDefinition().getProperties().get(SERVER_PORT_KEY));
-		if (useDynamicPort) {
-			properties.put(SERVER_PORT_KEY, String.valueOf(port));
+		String group = request.getDeploymentProperties()
+				.get(AppDeployer.GROUP_PROPERTY_KEY);
+		String deploymentId = String.format("%s.%s", group,
+				request.getDefinition().getName());
+		properties.putAll(request.getDefinition().getProperties());
+		properties.put(JMX_DEFAULT_DOMAIN_KEY, deploymentId);
+		properties.put("endpoints.shutdown.enabled", "true");
+		properties.put("endpoints.jmx.unique-names", "true");
+		if (group != null) {
+			properties.put("spring.cloud.application.group", group);
 		}
 		return properties;
 	}
 
 	private String[] getProfiles(AppDeploymentRequest request) {
 		if (request.getDeploymentProperties()
-				.containsKey(PREFIX + ThinJarLauncher.THIN_PROFILE)) {
+				.containsKey(AppDeployer.PREFIX + ThinJarLauncher.THIN_PROFILE)) {
 			return StringUtils
 					.commaDelimitedListToStringArray(request.getDeploymentProperties()
-							.get(PREFIX + ThinJarLauncher.THIN_PROFILE));
+							.get(AppDeployer.PREFIX + ThinJarLauncher.THIN_PROFILE));
 		}
 		return this.profiles;
 	}
 
 	private String getName(AppDeploymentRequest request) {
 		if (request.getDeploymentProperties()
-				.containsKey(PREFIX + ThinJarLauncher.THIN_NAME)) {
+				.containsKey(AppDeployer.PREFIX + ThinJarLauncher.THIN_NAME)) {
 			return request.getDeploymentProperties()
-					.get(PREFIX + ThinJarLauncher.THIN_NAME);
+					.get(AppDeployer.PREFIX + ThinJarLauncher.THIN_NAME);
 		}
 		return this.name;
 	}
 
-	@Override
-	public AppStatus status(String id) {
-		return apps.containsKey(id) ? apps.get(id).status() : null;
+	public void cancel(String id) {
+		if (apps.containsKey(id)) {
+			apps.get(id).cancel();
+		}
 	}
 
-	@Override
-	public void undeploy(String id) {
-		if (apps.containsKey(id)) {
-			apps.get(id).close();
-		}
+	public Wrapper getWrapper(String id) {
+		return apps.get(id);
 	}
 
 }
@@ -157,11 +145,11 @@ class Wrapper {
 
 	private Object app;
 
-	private AppStatus status;
+	private Object status;
 
 	private Resource resource;
 
-	private DeploymentState state = DeploymentState.undeployed;
+	private LaunchState state = LaunchState.unknown;
 
 	private final String name;
 
@@ -178,12 +166,11 @@ class Wrapper {
 		catch (IOException e) {
 			throw new IllegalArgumentException("Not a valid file resource");
 		}
-		this.status = AppStatus.of(id).with(new InMemoryAppInstanceStatus(this)).build();
 	}
 
 	public void run(Map<String, String> properties, List<String> args) {
 		if (this.app == null) {
-			this.state = DeploymentState.deploying;
+			this.state = LaunchState.launching;
 			ClassLoader contextLoader = Thread.currentThread().getContextClassLoader();
 			try {
 				Archive child = new JarFileArchive(resource.getFile());
@@ -191,10 +178,12 @@ class Wrapper {
 				this.app = cls.newInstance();
 				runContext(getMainClass(child), properties, args.toArray(new String[0]));
 				boolean running = isRunning();
-				this.state = running ? DeploymentState.deployed : DeploymentState.failed;
+				this.state = running ? LaunchState.running
+						: (getError() != null ? LaunchState.failed
+								: LaunchState.complete);
 			}
 			catch (Exception e) {
-				this.state = DeploymentState.failed;
+				this.state = LaunchState.failed;
 				logger.error("Cannot deploy " + resource, e);
 			}
 			finally {
@@ -204,8 +193,19 @@ class Wrapper {
 	}
 
 	private boolean isRunning() {
+		if (app == null) {
+			return false;
+		}
 		Method method = ReflectionUtils.findMethod(this.app.getClass(), "isRunning");
 		return (Boolean) ReflectionUtils.invokeMethod(method, this.app);
+	}
+
+	private Throwable getError() {
+		if (app == null) {
+			return null;
+		}
+		Method method = ReflectionUtils.findMethod(this.app.getClass(), "getError");
+		return (Throwable) ReflectionUtils.invokeMethod(method, this.app);
 	}
 
 	private void runContext(String mainClass, Map<String, String> properties,
@@ -242,14 +242,21 @@ class Wrapper {
 		ReflectionUtils.setField(field, null, value);
 	}
 
-	public void close() {
+	public void cancel() {
+		if (isRunning()) {
+			this.state = LaunchState.cancelled;
+			close();
+		}
+	}
+
+	private void close() {
 		if (this.app != null) {
 			try {
 				Method method = ReflectionUtils.findMethod(this.app.getClass(), "close");
 				ReflectionUtils.invokeMethod(method, this.app);
 			}
 			catch (Exception e) {
-				this.state = DeploymentState.unknown;
+				this.state = LaunchState.error;
 				logger.error("Cannot undeploy " + resource, e);
 			}
 			finally {
@@ -259,7 +266,7 @@ class Wrapper {
 						this.app = null;
 					}
 					catch (Exception e) {
-						this.state = DeploymentState.unknown;
+						this.state = LaunchState.error;
 						logger.error("Cannot clean up " + resource, e);
 					}
 					finally {
@@ -269,14 +276,13 @@ class Wrapper {
 				}
 			}
 		}
-		this.state = DeploymentState.undeployed;
 	}
 
 	public String getId() {
 		return id;
 	}
 
-	public AppStatus status() {
+	public Object status() {
 		return this.status;
 	}
 
@@ -284,8 +290,10 @@ class Wrapper {
 		return this.app;
 	}
 
-	public DeploymentState getDeploymentState() {
-		// TODO: support full lifecycle
+	public LaunchState getState() {
+		if (!isRunning() && this.app != null) {
+			close();
+		}
 		return this.state;
 	}
 
@@ -371,31 +379,8 @@ class Wrapper {
 		}
 	}
 
-}
-
-class InMemoryAppInstanceStatus implements AppInstanceStatus {
-
-	private final String id;
-	private final Wrapper wrapper;
-
-	public InMemoryAppInstanceStatus(Wrapper wrapper) {
-		this.id = UUID.randomUUID().toString();
-		this.wrapper = wrapper;
-	}
-
-	@Override
-	public String getId() {
-		return this.id;
-	}
-
-	@Override
-	public DeploymentState getState() {
-		return wrapper.getDeploymentState();
-	}
-
-	@Override
-	public Map<String, String> getAttributes() {
-		return Collections.emptyMap();
+	public void status(Object status) {
+		this.status = status;
 	}
 
 }

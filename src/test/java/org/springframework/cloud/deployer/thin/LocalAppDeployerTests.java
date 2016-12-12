@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.cloud.deployer.mem;
+package org.springframework.cloud.deployer.thin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,6 +28,8 @@ import org.junit.runners.Parameterized;
 import org.springframework.cloud.deployer.spi.app.DeploymentState;
 import org.springframework.cloud.deployer.spi.core.AppDefinition;
 import org.springframework.cloud.deployer.spi.core.AppDeploymentRequest;
+import org.springframework.cloud.deployer.spi.local.LocalAppDeployer;
+import org.springframework.cloud.deployer.spi.local.LocalDeployerProperties;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 
@@ -36,9 +38,16 @@ import org.springframework.core.io.Resource;
  *
  */
 @RunWith(Parameterized.class)
-public class ThinJarAppDeployerTests {
+public class LocalAppDeployerTests {
 
-	private static ThinJarAppDeployer deployer = new ThinJarAppDeployer();
+	private static LocalAppDeployer deployer = createDeployer();
+
+	private static LocalAppDeployer createDeployer() {
+		LocalDeployerProperties properties = new LocalDeployerProperties();
+		properties.setJavaOpts(
+				"-noverify -XX:TieredStopAtLevel=1 -Xss256K -Xms16M -Xmx256M -XX:MaxMetaspaceSize=128M -Djava.security.egd=file:/dev/./urandom");
+		return new LocalAppDeployer(properties);
+	}
 
 	@Parameterized.Parameters
 	public static List<Object[]> data() {
@@ -70,6 +79,7 @@ public class ThinJarAppDeployerTests {
 	@Test
 	public void appFromJarFileFails() throws Exception {
 		String deployed = deploy("app-with-cloud-in-lib-properties.jar", "--fail");
+		Thread.sleep(500L);
 		assertThat(deployer.status(deployed).getState())
 				.isEqualTo(DeploymentState.failed);
 		deployer.undeploy(deployed);
@@ -77,21 +87,33 @@ public class ThinJarAppDeployerTests {
 
 	private String deploy(String jarName, String... args) {
 		Resource resource = new FileSystemResource("src/test/resources/" + jarName);
-		AppDefinition definition = new AppDefinition("child", Collections.emptyMap());
+		AppDefinition definition = new AppDefinition(jarName, Collections.emptyMap());
 		AppDeploymentRequest request = new AppDeploymentRequest(definition, resource,
-				Collections.emptyMap(), Arrays.asList(args));
+				Collections.singletonMap("spring.cloud.deployer.group", "test"),
+				Arrays.asList(args));
 		String deployed = deployer.deploy(request);
+		DeploymentState state = deployer.status(deployed).getState();
+		while (state == DeploymentState.deploying) {
+			try {
+				Thread.sleep(100L);
+				state = deployer.status(deployed).getState();
+			}
+			catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+		}
+		System.err.println("State: " + state);
 		return deployed;
 	}
 
 	public static void main(String[] args) {
 		// Use this main method for leak detection (heap and non-heap, including classes
 		// loaded should be variable but stable)
-		ThinJarAppDeployerTests deployer = new ThinJarAppDeployerTests();
+		LocalAppDeployerTests deployer = new LocalAppDeployerTests();
 		while (true) {
 			String deployed = deployer.deploy("app-with-cloud-in-lib-properties.jar",
 					"--server.port=0");
-			ThinJarAppDeployerTests.deployer.undeploy(deployed);
+			LocalAppDeployerTests.deployer.undeploy(deployed);
 		}
 	}
 

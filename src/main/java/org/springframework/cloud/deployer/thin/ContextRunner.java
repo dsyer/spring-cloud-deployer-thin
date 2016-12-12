@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.cloud.deployer.mem;
+package org.springframework.cloud.deployer.thin;
 
 import java.sql.SQLException;
 import java.util.Map;
@@ -35,14 +35,21 @@ public class ContextRunner {
 	private ConfigurableApplicationContext context;
 	private Thread runThread;
 	private boolean running = false;
+	private Throwable error;
 
 	public void run(String source, Map<String, Object> properties, String... args) {
 		// Run in new thread to ensure that the context classloader is setup
 		this.runThread = new Thread(new Runnable() {
 			@Override
 			public void run() {
-				context = new SpringApplicationBuilder(source).bannerMode(Mode.OFF)
-						.properties(properties).run(args);
+				try {
+					context = new SpringApplicationBuilder(source).bannerMode(Mode.OFF)
+							.properties(properties).run(args);
+				}
+				catch (Throwable ex) {
+					error = ex;
+				}
+
 			}
 		});
 		this.runThread.start();
@@ -73,6 +80,10 @@ public class ContextRunner {
 
 	public boolean isRunning() {
 		return running;
+	}
+
+	public Throwable getError() {
+		return this.error;
 	}
 
 }
