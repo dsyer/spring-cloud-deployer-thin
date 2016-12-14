@@ -94,6 +94,9 @@ public class AbstractThinJarSupport {
 				request.getDefinition().getProperties());
 		String group = request.getDeploymentProperties()
 				.get(AppDeployer.GROUP_PROPERTY_KEY);
+		if (group == null) {
+			group = "deployer";
+		}
 		String deploymentId = String.format("%s.%s", group,
 				request.getDefinition().getName());
 		properties.putAll(request.getDefinition().getProperties());
@@ -348,7 +351,12 @@ class Wrapper {
 			for (int i = 0; i < roots.length; i++) {
 				urls.add(i, roots[i].getUrl());
 			}
-			return urls.toArray(new URL[0]);
+			URL[] result = urls.toArray(new URL[0]);
+			for (int i = 0; i < roots.length; i++) {
+				result = ArchiveUtils.addNestedClasses(roots[i], result,
+						"BOOT-INF/classes/");
+			}
+			return result;
 		}
 		catch (MalformedURLException e) {
 			throw new IllegalStateException("Cannot create URL", e);

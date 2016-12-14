@@ -24,10 +24,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import org.springframework.boot.loader.tools.LogbackInitializer;
+import org.springframework.cloud.deployer.resource.maven.MavenProperties;
+import org.springframework.cloud.deployer.resource.maven.MavenProperties.RemoteRepository;
+import org.springframework.cloud.deployer.resource.maven.MavenResource;
 import org.springframework.cloud.deployer.spi.app.DeploymentState;
 import org.springframework.cloud.deployer.spi.core.AppDefinition;
 import org.springframework.cloud.deployer.spi.core.AppDeploymentRequest;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,7 +40,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  */
 @RunWith(Parameterized.class)
-public class ThinJarAppDeployerTests {
+public class StreamAppDeployerTests {
+
+	static {
+		LogbackInitializer.initialize();
+	}
 
 	private static ThinJarAppDeployer deployer = new ThinJarAppDeployer();
 
@@ -48,18 +55,12 @@ public class ThinJarAppDeployerTests {
 	}
 
 	@Test
-	public void appFromJarFile() throws Exception {
-		String deployed = deploy("app-with-db-in-lib-properties.jar");
-		// Deployment is blocking so it either failed or succeeded.
-		assertThat(deployer.status(deployed).getState())
-				.isEqualTo(DeploymentState.deployed);
-		deployer.undeploy(deployed);
-	}
-
-	@Test
-	public void twoApps() throws Exception {
-		String first = deploy("app-with-db-in-lib-properties.jar");
-		String second = deploy("app-with-cloud-in-lib-properties.jar");
+	public void tickTock() throws Exception {
+		String first = deploy(
+				"org.springframework.cloud.stream.app:time-source-rabbit:1.1.0.RELEASE");
+		String second = deploy(
+				"org.springframework.cloud.stream.app:log-sink-rabbit:1.1.0.RELEASE",
+				"--spring.cloud.stream.bindings.input.destination=output");
 		// Deployment is blocking so it either failed or succeeded.
 		assertThat(deployer.status(first).getState()).isEqualTo(DeploymentState.deployed);
 		assertThat(deployer.status(second).getState())
@@ -68,31 +69,17 @@ public class ThinJarAppDeployerTests {
 		deployer.undeploy(second);
 	}
 
-	@Test
-	public void appFromJarFileFails() throws Exception {
-		String deployed = deploy("app-with-cloud-in-lib-properties.jar", "--fail");
-		assertThat(deployer.status(deployed).getState())
-				.isEqualTo(DeploymentState.failed);
-		deployer.undeploy(deployed);
-	}
-
-	String deploy(String jarName, String... args) {
-		Resource resource = new FileSystemResource("src/test/resources/" + jarName);
-		AppDefinition definition = new AppDefinition("child", Collections.emptyMap());
+	private String deploy(String jarName, String... args) throws Exception {
+		MavenProperties props = new MavenProperties();
+		props.setRemoteRepositories(Collections.singletonMap("central",
+				new RemoteRepository("https://repo1.maven.org/maven2/")));
+		Resource resource = MavenResource.parse(jarName, props);
+		AppDefinition definition = new AppDefinition(resource.getFilename(),
+				Collections.emptyMap());
 		AppDeploymentRequest request = new AppDeploymentRequest(definition, resource,
 				Collections.emptyMap(), Arrays.asList(args));
 		String deployed = deployer.deploy(request);
 		return deployed;
-	}
-
-	public static void main(String[] args) {
-		// Use this main method for leak detection (heap and non-heap, including classes
-		// loaded should be variable but stable)
-		ThinJarAppDeployerTests deployer = new ThinJarAppDeployerTests();
-		while (true) {
-			String deployed = deployer.deploy("app-with-cloud-in-lib-properties.jar");
-			ThinJarAppDeployerTests.deployer.undeploy(deployed);
-		}
 	}
 
 }
