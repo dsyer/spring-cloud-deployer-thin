@@ -78,7 +78,7 @@ public class ThinJarAppDeployerTests {
 
 	String deploy(String jarName, String... args) {
 		Resource resource = new FileSystemResource("src/test/resources/" + jarName);
-		AppDefinition definition = new AppDefinition("child", Collections.emptyMap());
+		AppDefinition definition = new AppDefinition(jarName, Collections.emptyMap());
 		AppDeploymentRequest request = new AppDeploymentRequest(definition, resource,
 				Collections.emptyMap(), Arrays.asList(args));
 		String deployed = deployer.deploy(request);

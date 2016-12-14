@@ -19,7 +19,6 @@ package org.springframework.cloud.deployer.thin;
 import java.sql.SQLException;
 import java.util.Map;
 
-import org.springframework.boot.Banner.Mode;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -43,8 +42,8 @@ public class ContextRunner {
 			@Override
 			public void run() {
 				try {
-					context = new SpringApplicationBuilder(source).bannerMode(Mode.OFF)
-							.properties(properties).run(args);
+					context = new SpringApplicationBuilder(source).properties(properties)
+							.run(args);
 				}
 				catch (Throwable ex) {
 					error = ex;
