@@ -99,7 +99,6 @@ public class AbstractThinJarSupport {
 		}
 		String deploymentId = String.format("%s.%s", group,
 				request.getDefinition().getName());
-		properties.putAll(request.getDefinition().getProperties());
 		properties.put(JMX_DEFAULT_DOMAIN_KEY, deploymentId);
 		properties.put("endpoints.shutdown.enabled", "true");
 		properties.put("endpoints.jmx.unique-names", "true");
