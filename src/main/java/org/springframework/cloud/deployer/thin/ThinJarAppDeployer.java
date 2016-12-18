@@ -56,7 +56,7 @@ public class ThinJarAppDeployer extends AbstractThinJarSupport implements AppDep
 	@Override
 	public String deploy(AppDeploymentRequest request) {
 		String id = super.deploy(request);
-		Wrapper wrapper = super.getWrapper(id);
+		ThinJarAppWrapper wrapper = super.getWrapper(id);
 		wrapper.status(
 				AppStatus.of(id).with(new InMemoryAppInstanceStatus(wrapper)).build());
 		return id;
@@ -90,9 +90,9 @@ public class ThinJarAppDeployer extends AbstractThinJarSupport implements AppDep
 class InMemoryAppInstanceStatus implements AppInstanceStatus {
 
 	private final String id;
-	private final Wrapper wrapper;
+	private final ThinJarAppWrapper wrapper;
 
-	public InMemoryAppInstanceStatus(Wrapper wrapper) {
+	public InMemoryAppInstanceStatus(ThinJarAppWrapper wrapper) {
 		this.id = UUID.randomUUID().toString();
 		this.wrapper = wrapper;
 	}

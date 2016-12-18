@@ -20,7 +20,7 @@ public class ThinJarTaskLauncher extends AbstractThinJarSupport implements TaskL
 	@Override
 	public String launch(AppDeploymentRequest request) {
 		String id = super.deploy(request);
-		Wrapper wrapper = super.getWrapper(id);
+		ThinJarAppWrapper wrapper = super.getWrapper(id);
 		wrapper.status(new TaskStatus(id, LaunchState.launching,
 				request.getDeploymentProperties()));
 		return id;
@@ -33,7 +33,7 @@ public class ThinJarTaskLauncher extends AbstractThinJarSupport implements TaskL
 
 	@Override
 	public TaskStatus status(String id) {
-		Wrapper wrapper = super.getWrapper(id);
+		ThinJarAppWrapper wrapper = super.getWrapper(id);
 		if (wrapper != null) {
 			return new TaskStatus(id, wrapper.getState(), Collections.emptyMap());
 		}
