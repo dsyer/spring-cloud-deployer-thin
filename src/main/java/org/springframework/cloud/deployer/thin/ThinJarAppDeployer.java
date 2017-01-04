@@ -16,6 +16,8 @@
 
 package org.springframework.cloud.deployer.thin;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
@@ -26,6 +28,9 @@ import org.springframework.cloud.deployer.spi.app.AppStatus;
 import org.springframework.cloud.deployer.spi.app.DeploymentState;
 import org.springframework.cloud.deployer.spi.core.AppDeploymentRequest;
 import org.springframework.cloud.deployer.spi.task.LaunchState;
+import org.springframework.util.ClassUtils;
+import org.springframework.util.MethodInvoker;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.util.SocketUtils;
 
 /**
@@ -83,6 +88,100 @@ public class ThinJarAppDeployer extends AbstractThinJarSupport implements AppDep
 	@Override
 	public void undeploy(String id) {
 		super.cancel(id);
+	}
+
+	/**
+	 * Lookup a bean from a deployed application. A deployed application contains an
+	 * application context, which has beans of various types, so this method extracts a
+	 * bean of the requested type if there is one. Beware: the deployed context has an
+	 * isolated classloader and the returned object will only be of the requested type if
+	 * that type is from the parent classloader. Methods can be called reflectively on the
+	 * bean as long as their parameters and return types are themselves loaded by the
+	 * parent classloader (e.g. anything from the Java SDK).
+	 * 
+	 * @param id the app id
+	 * @param type the required type of the bean
+	 * @return a bean of the requested type if the app is deployed, otherwise null
+	 * @throws IllegalStateException if the bean cannot be found
+	 */
+	public Object getBean(String id, Class<?> type) {
+		ThinJarAppWrapper wrapper = getWrapper(id);
+		if (wrapper == null) {
+			return null;
+		}
+		try {
+			return getBean(wrapper, type);
+		}
+		catch (Exception e) {
+			// TODO: probably BeansException?
+			throw new IllegalStateException("Cannot extract bean of type: " + type, e);
+		}
+	}
+
+	/**
+	 * Lookup all beans from a deployed application.
+	 * 
+	 * @param id the app id
+	 * @param type the required type of the bean
+	 * @return a map of bean name to bean (could be empty)
+	 * @throws IllegalStateException if the beans cannot be found
+	 * 
+	 * @see #getBean(String, Class)
+	 */
+	public Map<String, Object> getBeansOfType(String id, Class<?> type) {
+		ThinJarAppWrapper wrapper = getWrapper(id);
+		if (wrapper == null) {
+			return Collections.emptyMap();
+		}
+		try {
+			return getBeansOfType(wrapper, type);
+		}
+		catch (Exception e) {
+			// TODO: probably BeansException?
+			throw new IllegalStateException("Cannot extract beans of type: " + type, e);
+		}
+	}
+
+	private Map<String, Object> getBeansOfType(ThinJarAppWrapper wrapper, Class<?> type)
+			throws IllegalAccessException, ClassNotFoundException, NoSuchMethodException,
+			InvocationTargetException {
+		Object app = findContext(wrapper);
+		MethodInvoker invoker = new MethodInvoker();
+		invoker.setTargetObject(app);
+		invoker.setTargetMethod("getBeansOfType");
+		invoker.setArguments(new Object[] { findType(app, type) });
+		invoker.prepare();
+		@SuppressWarnings("unchecked")
+		Map<String, Object> map = (Map<String, Object>) invoker.invoke();
+		return map;
+	}
+
+	private Object getBean(ThinJarAppWrapper wrapper, Class<?> type)
+			throws IllegalAccessException, ClassNotFoundException, NoSuchMethodException,
+			InvocationTargetException {
+		Object app = findContext(wrapper);
+		MethodInvoker invoker = new MethodInvoker();
+		invoker.setTargetObject(app);
+		invoker.setTargetMethod("getBean");
+		invoker.setArguments(new Object[] { findType(app, type) });
+		invoker.prepare();
+		return invoker.invoke();
+	}
+
+	private Object findType(Object app, Class<?> type) {
+		if (app.getClass().getClassLoader() == type.getClassLoader()) {
+			return type;
+		}
+		return ClassUtils.resolveClassName(type.getName(),
+				app.getClass().getClassLoader());
+	}
+
+	private Object findContext(ThinJarAppWrapper wrapper) {
+		Object app = wrapper.getApp();
+		Field field = ReflectionUtils.findField(app.getClass(), "context");
+		ReflectionUtils.makeAccessible(field);
+		app = ReflectionUtils.getField(field, app);
+		return app;
 	}
 
 }
