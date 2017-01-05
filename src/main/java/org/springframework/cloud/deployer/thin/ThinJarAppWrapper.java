@@ -174,6 +174,7 @@ public class ThinJarAppWrapper {
 				logger.error("Cannot undeploy " + resource, e);
 			}
 			finally {
+				reset();
 				if (this.app != null) {
 					try {
 						((URLClassLoader) app.getClass().getClassLoader()).close();
