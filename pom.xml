@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<artifactId>spring-cloud-deployer-thin</artifactId>
-	<version>0.0.1.BUILD-SNAPSHOT</version>
+	<version>1.0.0.BUILD-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
 	<name>spring-cloud-deployer-thin</name>
@@ -13,7 +13,7 @@
 	<parent>
 		<groupId>org.springframework.cloud</groupId>
 		<artifactId>spring-cloud-build</artifactId>
-		<version>1.3.0.BUILD-SNAPSHOT</version>
+		<version>1.3.1.M1</version>
 		<relativePath /> <!-- lookup parent from repository -->
 	</parent>
 
@@ -21,8 +21,8 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<java.version>1.8</java.version>
-		<wrapper.version>0.0.1.BUILD-SNAPSHOT</wrapper.version>
-		<spring-boot.version>1.5.0.BUILD-SNAPSHOT</spring-boot.version>
+		<wrapper.version>1.0.0.M1</wrapper.version>
+		<spring-boot.version>1.5.1.RELEASE</spring-boot.version>
 		<deployer.version>1.1.1.RELEASE</deployer.version>
 	</properties>
 
