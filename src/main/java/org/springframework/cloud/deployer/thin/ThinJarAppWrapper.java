@@ -34,7 +34,6 @@ import java.util.jar.Manifest;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
 import org.springframework.boot.loader.archive.Archive;
 import org.springframework.boot.loader.archive.ExplodedArchive;
 import org.springframework.boot.loader.archive.JarFileArchive;
@@ -133,7 +132,7 @@ public class ThinJarAppWrapper {
 		if (args.contains("--debug")) {
 			// set log level
 		}
-		List<Archive> extracted = archives.combine(null, child, name, profiles);
+		List<Archive> extracted = archives.resolve(child, name, profiles);
 		ClassLoader loader = createClassLoader(extracted, parent, child);
 		ClassUtils.overrideThreadContextClassLoader(loader);
 		reset();
