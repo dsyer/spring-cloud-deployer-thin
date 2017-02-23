@@ -38,8 +38,9 @@ import org.apache.commons.logging.LogFactory;
 import org.springframework.boot.loader.archive.Archive;
 import org.springframework.boot.loader.archive.ExplodedArchive;
 import org.springframework.boot.loader.archive.JarFileArchive;
-import org.springframework.boot.loader.thin.AetherEngine.ProgressType;
 import org.springframework.boot.loader.thin.ArchiveUtils;
+import org.springframework.boot.loader.thin.DependencyResolver;
+import org.springframework.boot.loader.thin.PathResolver;
 import org.springframework.boot.loader.tools.MainClassFinder;
 import org.springframework.cloud.deployer.spi.task.LaunchState;
 import org.springframework.core.io.Resource;
@@ -128,11 +129,11 @@ public class ThinJarAppWrapper {
 	private Class<?> createContextRunnerClass(Archive child, List<String> args)
 			throws Exception, ClassNotFoundException {
 		Archive parent = createArchive();
-		ArchiveUtils archives = new ArchiveUtils();
+		PathResolver archives = new PathResolver(DependencyResolver.instance());
 		if (args.contains("--debug")) {
-			archives.setProgress(ProgressType.DETAILED);
+			// set log level
 		}
-		List<Archive> extracted = archives.extract(child, name, profiles);
+		List<Archive> extracted = archives.combine(null, child, name, profiles);
 		ClassLoader loader = createClassLoader(extracted, parent, child);
 		ClassUtils.overrideThreadContextClassLoader(loader);
 		reset();
